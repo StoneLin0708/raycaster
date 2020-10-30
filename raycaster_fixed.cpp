@@ -1,11 +1,12 @@
 // fixed-point implementation
 
 #include "raycaster_fixed.h"
+#include <cmath>
 #include "raycaster_data.h"
 #include "raycaster_tables.h"
 
 // (v * f) >> 8
-uint16_t RayCasterFixed::MulU(uint8_t v, uint16_t f)
+uint16_t MulU(uint8_t v, uint16_t f)
 {
     const uint8_t f_h = f >> 8;
     const uint8_t f_l = f % 256;
@@ -14,20 +15,24 @@ uint16_t RayCasterFixed::MulU(uint8_t v, uint16_t f)
     return hm + (lm >> 8);
 }
 
-int16_t RayCasterFixed::MulS(uint8_t v, int16_t f)
+int16_t MulS(uint8_t v, int16_t f)
 {
-    const uint16_t uf = MulU(v, static_cast<uint16_t>(ABS(f)));
-    if (f < 0) {
-        return ~uf;
-    }
-    return uf;
+    const uint16_t uf = MulU(v, static_cast<uint16_t>(std::abs(f)));
+    return f < 0 ? ~uf : uf;
 }
 
-int16_t RayCasterFixed::MulTan(uint8_t value,
-                               bool inverse,
-                               uint8_t quarter,
-                               uint8_t angle,
-                               const uint16_t *lookupTable)
+inline int16_t AbsTan(uint8_t quarter,
+                      uint8_t angle,
+                      const uint16_t *lookupTable)
+{
+    return lookupTable[quarter & 1 ? INVERT(angle) : angle];
+}
+
+int16_t MulTan(uint8_t value,
+               bool inverse,
+               uint8_t quarter,
+               uint8_t angle,
+               const uint16_t *lookupTable)
 {
     uint8_t signedValue = value;
     if (inverse) {
@@ -43,55 +48,43 @@ int16_t RayCasterFixed::MulTan(uint8_t value,
         return 0;
     }
     if (quarter % 2 == 1) {
-        return -MulU(signedValue, LOOKUP16(lookupTable, INVERT(angle)));
+        return -MulU(signedValue, lookupTable[INVERT(angle)]);
     }
-    return MulU(signedValue, LOOKUP16(lookupTable, angle));
+    return MulU(signedValue, lookupTable[angle]);
 }
 
-inline int16_t RayCasterFixed::AbsTan(uint8_t quarter,
-                                      uint8_t angle,
-                                      const uint16_t *lookupTable)
-{
-    if (quarter & 1) {
-        return LOOKUP16(lookupTable, INVERT(angle));
-    }
-    return LOOKUP16(lookupTable, angle);
-}
-
-inline bool RayCasterFixed::IsWall(uint8_t tileX, uint8_t tileY)
+inline bool IsWall(uint8_t tileX, uint8_t tileY)
 {
     if (tileX > MAP_X - 1 || tileY > MAP_Y - 1) {
         return true;
     }
-    return LOOKUP8(g_map, (tileX >> 3) + (tileY << (MAP_XS - 3))) &
+    return g_map[(tileX >> 3) + (tileY << (MAP_XS - 3))] &
            (1 << (8 - (tileX & 0x7)));
 }
 
-void RayCasterFixed::LookupHeight(uint16_t distance,
-                                  uint8_t *height,
-                                  uint16_t *step)
+void LookupHeight(uint16_t distance, uint8_t *height, uint16_t *step)
 {
     if (distance >= 256) {
         const uint16_t ds = distance >> 3;
         if (ds >= 256) {
-            *height = LOOKUP8(g_farHeight, 255) - 1;
-            *step = LOOKUP16(g_farStep, 255);
+            *height = g_farHeight[255] - 1;
+            *step = g_farStep[255];
         }
-        *height = LOOKUP8(g_farHeight, ds);
-        *step = LOOKUP16(g_farStep, ds);
+        *height = g_farHeight[ds];
+        *step = g_farStep[ds];
     } else {
-        *height = LOOKUP8(g_nearHeight, distance);
-        *step = LOOKUP16(g_nearStep, distance);
+        *height = g_nearHeight[distance];
+        *step = g_nearStep[distance];
     }
 }
 
-void RayCasterFixed::CalculateDistance(uint16_t rayX,
-                                       uint16_t rayY,
-                                       uint16_t rayA,
-                                       int16_t *deltaX,
-                                       int16_t *deltaY,
-                                       uint8_t *textureNo,
-                                       uint8_t *textureX)
+void CalculateDistance(uint16_t rayX,
+                       uint16_t rayY,
+                       uint16_t rayA,
+                       int16_t *deltaX,
+                       int16_t *deltaY,
+                       uint8_t *textureNo,
+                       uint8_t *textureX)
 {
     int8_t tileStepX;
     int8_t tileStepY;
@@ -221,8 +214,7 @@ void RayCasterFixed::Trace(uint16_t screenX,
                            uint16_t *textureY,
                            uint16_t *textureStep)
 {
-    uint16_t rayAngle =
-        static_cast<uint16_t>(_playerA + LOOKUP16(g_deltaAngle, screenX));
+    uint16_t rayAngle = static_cast<uint16_t>(_playerA + g_deltaAngle[screenX]);
 
     // neutralize artefacts around edges
     switch (rayAngle % 256) {
@@ -251,16 +243,16 @@ void RayCasterFixed::Trace(uint16_t screenX,
     } else
         switch (_viewQuarter) {
         case 0:
-            distance += MulS(LOOKUP8(g_cos, _viewAngle), deltaY);
+            distance += MulS(g_cos[_viewAngle], deltaY);
             break;
         case 1:
-            distance -= MulS(LOOKUP8(g_cos, INVERT(_viewAngle)), deltaY);
+            distance -= MulS(g_cos[INVERT(_viewAngle)], deltaY);
             break;
         case 2:
-            distance -= MulS(LOOKUP8(g_cos, _viewAngle), deltaY);
+            distance -= MulS(g_cos[_viewAngle], deltaY);
             break;
         case 3:
-            distance += MulS(LOOKUP8(g_cos, INVERT(_viewAngle)), deltaY);
+            distance += MulS(g_cos[INVERT(_viewAngle)], deltaY);
             break;
         }
 
@@ -271,16 +263,16 @@ void RayCasterFixed::Trace(uint16_t screenX,
     } else
         switch (_viewQuarter) {
         case 0:
-            distance += MulS(LOOKUP8(g_sin, _viewAngle), deltaX);
+            distance += MulS(g_sin[_viewAngle], deltaX);
             break;
         case 1:
-            distance += MulS(LOOKUP8(g_sin, INVERT(_viewAngle)), deltaX);
+            distance += MulS(g_sin[INVERT(_viewAngle)], deltaX);
             break;
         case 2:
-            distance -= MulS(LOOKUP8(g_sin, _viewAngle), deltaX);
+            distance -= MulS(g_sin[_viewAngle], deltaX);
             break;
         case 3:
-            distance -= MulS(LOOKUP8(g_sin, INVERT(_viewAngle)), deltaX);
+            distance -= MulS(g_sin[INVERT(_viewAngle)], deltaX);
             break;
         }
     if (distance >= MIN_DIST) {
@@ -288,8 +280,8 @@ void RayCasterFixed::Trace(uint16_t screenX,
         LookupHeight((distance - MIN_DIST) >> 2, screenY, textureStep);
     } else {
         *screenY = SCREEN_HEIGHT >> 1;
-        *textureY = LOOKUP16(g_overflowOffset, distance);
-        *textureStep = LOOKUP16(g_overflowStep, distance);
+        *textureY = g_overflowOffset[distance];
+        *textureStep = g_overflowStep[distance];
     }
 }
 
