@@ -9,37 +9,32 @@ void Renderer::TraceFrame(Game *g, uint32_t *fb)
                static_cast<int16_t>(g->playerA / (2.0f * M_PI) * 1024.0f));
 
     for (int x = 0; x < SCREEN_WIDTH; x++) {
-        uint8_t sso;
-        uint8_t tc;
-        uint8_t tn;
-        uint16_t tso;
-        uint16_t tst;
         uint32_t *lb = fb + x;
 
-        _rc->Trace(x, &sso, &tn, &tc, &tso, &tst);
+        const auto trace = _rc->Trace(x);
+        auto screenY = trace.screenY;
 
-        const auto tx = static_cast<int>(tc >> 2);
-        int16_t ws = HORIZON_HEIGHT - sso;
+        int16_t ws = HORIZON_HEIGHT - trace.screenY;
         if (ws < 0) {
             ws = 0;
-            sso = HORIZON_HEIGHT;
+            screenY = HORIZON_HEIGHT;
         }
-        uint16_t to = tso;
-        uint16_t ts = tst;
+        uint16_t to = trace.textureY;
 
         for (int y = 0; y < ws; y++) {
             *lb = GetARGB(96 + (HORIZON_HEIGHT - y));
             lb += SCREEN_WIDTH;
         }
 
-        for (int y = 0; y < sso * 2; y++) {
+        const auto tx = static_cast<int>(trace.textureX >> 2);
+        for (int y = 0; y < screenY * 2; y++) {
             // paint texture pixel
             auto ty = static_cast<int>(to >> 10);
             auto tv = g_texture8[(ty << 6) + tx];
 
-            to += ts;
+            to += trace.textureStep;
 
-            if (tn == 1 && tv > 0) {
+            if (trace.textureNo == 1 && tv > 0) {
                 // dark wall
                 tv >>= 1;
             }

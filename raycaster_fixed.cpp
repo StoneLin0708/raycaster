@@ -207,13 +207,9 @@ WallHit:
 
 // (playerX, playerY) is 8 box coordinate bits, 8 inside coordinate bits
 // (playerA) is full circle as 1024
-void RayCasterFixed::Trace(uint16_t screenX,
-                           uint8_t *screenY,
-                           uint8_t *textureNo,
-                           uint8_t *textureX,
-                           uint16_t *textureY,
-                           uint16_t *textureStep)
+RayCasterFixed::TraceResult RayCasterFixed::Trace(uint16_t screenX)
 {
+    TraceResult res;
     uint16_t rayAngle = static_cast<uint16_t>(_playerA + g_deltaAngle[screenX]);
 
     // neutralize artefacts around edges
@@ -231,8 +227,8 @@ void RayCasterFixed::Trace(uint16_t screenX,
 
     int16_t deltaX;
     int16_t deltaY;
-    CalculateDistance(_playerX, _playerY, rayAngle, &deltaX, &deltaY, textureNo,
-                      textureX);
+    CalculateDistance(_playerX, _playerY, rayAngle, &deltaX, &deltaY,
+                      &res.textureNo, &res.textureX);
 
     // distance = deltaY * cos(playerA) + deltaX * sin(playerA)
     int16_t distance = 0;
@@ -276,13 +272,15 @@ void RayCasterFixed::Trace(uint16_t screenX,
             break;
         }
     if (distance >= MIN_DIST) {
-        *textureY = 0;
-        LookupHeight((distance - MIN_DIST) >> 2, screenY, textureStep);
+        res.textureY = 0;
+        LookupHeight((distance - MIN_DIST) >> 2, &res.screenY,
+                     &res.textureStep);
     } else {
-        *screenY = SCREEN_HEIGHT >> 1;
-        *textureY = g_overflowOffset[distance];
-        *textureStep = g_overflowStep[distance];
+        res.screenY = SCREEN_HEIGHT >> 1;
+        res.textureY = g_overflowOffset[distance];
+        res.textureStep = g_overflowStep[distance];
     }
+    return res;
 }
 
 void RayCasterFixed::Start(uint16_t playerX, uint16_t playerY, int16_t playerA)

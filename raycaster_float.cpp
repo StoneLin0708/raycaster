@@ -128,38 +128,36 @@ float RayCasterFloat::Distance(float playerX,
     return sqrt(deltaX * deltaX + deltaY * deltaY);
 }
 
-void RayCasterFloat::Trace(uint16_t screenX,
-                           uint8_t *screenY,
-                           uint8_t *textureNo,
-                           uint8_t *textureX,
-                           uint16_t *textureY,
-                           uint16_t *textureStep)
+RayCasterFloat::TraceResult RayCasterFloat::Trace(uint16_t screenX)
 {
+    TraceResult res;
     float hitOffset;
     int hitDirection;
-    float deltaAngle = atanf(((int16_t) screenX - SCREEN_WIDTH / 2.0f) /
-                             (SCREEN_WIDTH / 2.0f) * M_PI / 4);
+    float deltaAngle =
+        atanf(((int16_t) screenX - SCREEN_WIDTH / 2.0f) /
+              (SCREEN_WIDTH / 2.0f) * M_PI / 4);  // FOV = 2 * tan^-1(PI/4)
     float lineDistance = Distance(_playerX, _playerY, _playerA + deltaAngle,
                                   &hitOffset, &hitDirection);
     float distance = lineDistance * cos(deltaAngle);
     float dum;
-    *textureX = (uint8_t)(256.0f * modff(hitOffset, &dum));
-    *textureNo = hitDirection;
-    *textureY = 0;
-    *textureStep = 0;
+    res.textureNo = hitDirection;
+    res.textureX = (uint8_t)(256.0f * modff(hitOffset, &dum));
+    res.textureY = 0;
+    res.textureStep = 0;
     if (distance > 0) {
-        *screenY = INV_FACTOR / distance;
-        auto txs = (*screenY * 2.0f);
+        res.screenY = INV_FACTOR / distance;
+        auto txs = (res.screenY * 2.0f);
         if (txs != 0) {
-            *textureStep = (256 / txs) * 256;
+            res.textureStep = (256 / txs) * 256;
             if (txs > SCREEN_HEIGHT) {
                 auto wallHeight = (txs - SCREEN_HEIGHT) / 2;
-                *textureY = wallHeight * (256 / txs) * 256;
+                res.textureY = wallHeight * (256 / txs) * 256;
             }
         }
     } else {
-        *screenY = 0;
+        res.screenY = 0;
     }
+    return res;
 }
 
 void RayCasterFloat::Start(uint16_t playerX, uint16_t playerY, int16_t playerA)

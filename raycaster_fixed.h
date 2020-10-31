@@ -4,13 +4,8 @@
 class RayCasterFixed : public RayCaster
 {
 public:
-    void Start(uint16_t playerX, uint16_t playerY, int16_t playerA);
-    void Trace(uint16_t screenX,
-               uint8_t *screenY,
-               uint8_t *textureNo,
-               uint8_t *textureX,
-               uint16_t *textureY,
-               uint16_t *textureStep);
+    void Start(uint16_t playerX, uint16_t playerY, int16_t playerA) override;
+    TraceResult Trace(uint16_t screenX) override;
 
     RayCasterFixed();
     ~RayCasterFixed();
