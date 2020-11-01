@@ -2,6 +2,7 @@
 
 #include "raycaster_float.h"
 #include <math.h>
+#include <algorithm>
 
 bool RayCasterFloat::IsWall(float rayX, float rayY)
 {
@@ -145,8 +146,8 @@ RayCasterFloat::TraceResult RayCasterFloat::Trace(uint16_t screenX)
     res.textureY = 0;
     res.textureStep = 0;
     if (distance > 0) {
-        res.screenY = INV_FACTOR / distance;
-        auto txs = (res.screenY * 2.0f);
+        res.screenY = std::min<int>(INV_FACTOR / distance, SCREEN_HEIGHT / 2);
+        auto txs = (INV_FACTOR / distance * 2.0f);
         if (txs != 0) {
             res.textureStep = (256 / txs) * 256;
             if (txs > SCREEN_HEIGHT) {

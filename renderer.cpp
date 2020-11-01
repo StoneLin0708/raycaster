@@ -21,6 +21,7 @@ void Renderer::TraceFrame(Game *g, uint32_t *fb)
         }
         uint16_t to = trace.textureY;
 
+        // sky
         for (int y = 0; y < ws; y++) {
             *lb = GetARGB(96 + (HORIZON_HEIGHT - y));
             lb += SCREEN_WIDTH;
@@ -34,7 +35,7 @@ void Renderer::TraceFrame(Game *g, uint32_t *fb)
 
             to += trace.textureStep;
 
-            if (trace.textureNo == 1 && tv > 0) {
+            if (trace.textureNo == 1) {
                 // dark wall
                 tv >>= 1;
             }
