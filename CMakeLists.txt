@@ -28,4 +28,6 @@ include_directories(${SDL2_INCLUDE_DIRS})
 
 add_executable(raycaster ${srcs})
 
-target_link_libraries(raycaster SDL2)
+target_link_libraries(raycaster -lSDL2 -lSDL2_ttf)
+
+file(COPY resource/FreeMono.ttf DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

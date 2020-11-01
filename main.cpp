@@ -1,7 +1,10 @@
 #include <SDL.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 #include <fstream>
 #include <iostream>
+#include <string>
 
 #include "game.h"
 #include "raycaster.h"
@@ -10,6 +13,45 @@
 #include "renderer.h"
 
 using namespace std;
+
+class fps_renderer
+{
+public:
+    fps_renderer(SDL_Renderer *renderer) : renderer(renderer)
+    {
+        font = TTF_OpenFont("FreeMono.ttf", 24);
+        loc.x = 0;
+        loc.y = 0;
+    }
+
+    ~fps_renderer() { SDL_DestroyTexture(texture); }
+
+    void update(int fps)
+    {
+        if (fps != _fps) {
+            _fps = fps;
+            update_texture();
+        }
+    }
+
+    void render() { SDL_RenderCopy(renderer, texture, NULL, &loc); }
+
+private:
+    void update_texture()
+    {
+        const auto text = std::to_string(_fps);
+        auto surf = TTF_RenderText_Solid(font, text.c_str(), {0, 0, 255});
+        SDL_DestroyTexture(texture);
+        texture = SDL_CreateTextureFromSurface(renderer, surf);
+        SDL_QueryTexture(texture, 0, 0, &loc.w, &loc.h);
+        SDL_FreeSurface(surf);
+    }
+    SDL_Renderer *renderer;
+    TTF_Font *font;
+    int _fps = 0;
+    SDL_Texture *texture = nullptr;
+    SDL_Rect loc;
+};
 
 static void DrawBuffer(SDL_Renderer *sdlRenderer,
                        SDL_Texture *sdlTexture,
@@ -65,7 +107,7 @@ static bool ProcessEvent(const SDL_Event &event,
 }
 int main(int argc, char *args[])
 {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    if ((SDL_Init(SDL_INIT_VIDEO) < 0) || (TTF_Init() < 0)) {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
     } else {
         SDL_Window *sdlWindow =
@@ -88,8 +130,10 @@ int main(int argc, char *args[])
             int moveDirection = 0;
             int rotateDirection = 0;
             bool isExiting = false;
-            const static auto tickFrequency = SDL_GetPerformanceFrequency();
+            const auto tickFrequency = SDL_GetPerformanceFrequency();
             auto tickCounter = SDL_GetPerformanceCounter();
+            auto fpsCounter = tickCounter;
+            auto framecount = 0;
             SDL_Event event;
 
             SDL_Renderer *sdlRenderer =
@@ -101,14 +145,28 @@ int main(int argc, char *args[])
                 sdlRenderer, SDL_PIXELFORMAT_ARGB8888,
                 SDL_TEXTUREACCESS_STREAMING, SCREEN_WIDTH, SCREEN_HEIGHT);
 
+            fps_renderer fps(sdlRenderer);
+
+            auto count2sec = [=](auto start, auto end) {
+                return (end - start) / static_cast<float>(tickFrequency);
+            };
+
             while (!isExiting) {
+                ++framecount;
                 floatRenderer.TraceFrame(&game, floatBuffer);
                 fixedRenderer.TraceFrame(&game, fixedBuffer);
 
                 DrawBuffer(sdlRenderer, fixedTexture, fixedBuffer, 0);
                 DrawBuffer(sdlRenderer, floatTexture, floatBuffer,
                            SCREEN_WIDTH + 1);
-
+                if (count2sec(fpsCounter, SDL_GetPerformanceCounter()) >=
+                    1.0f) {
+                    auto n = SDL_GetPerformanceCounter();
+                    fps.update(framecount / count2sec(fpsCounter, n));
+                    fpsCounter = n;
+                    framecount = 0;
+                }
+                fps.render();
                 SDL_RenderPresent(sdlRenderer);
 
                 if (SDL_PollEvent(&event)) {
@@ -116,8 +174,7 @@ int main(int argc, char *args[])
                         ProcessEvent(event, &moveDirection, &rotateDirection);
                 }
                 const auto nextCounter = SDL_GetPerformanceCounter();
-                const auto seconds = (nextCounter - tickCounter) /
-                                     static_cast<float>(tickFrequency);
+                const auto seconds = count2sec(tickCounter, nextCounter);
                 tickCounter = nextCounter;
                 game.Move(moveDirection, rotateDirection, seconds);
             }
