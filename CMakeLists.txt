@@ -24,6 +24,8 @@ renderer.h
 renderer.cpp
 )
 
+include_directories(gcem/include)
+
 include_directories(${SDL2_INCLUDE_DIRS})
 
 add_executable(raycaster ${srcs})

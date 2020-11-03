@@ -10,7 +10,6 @@
 #define SCREEN_SCALE 2
 #define FOV (double) (M_PI / 2)
 #define INV_FACTOR (float) (SCREEN_WIDTH * 95.0f / 320.0f)
-#define LOOKUP_TBL
 
 #define MAP_X (uint8_t) 32
 #define MAP_XS (uint8_t) 5

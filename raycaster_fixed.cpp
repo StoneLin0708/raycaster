@@ -21,18 +21,18 @@ int16_t MulS(uint8_t v, int16_t f)
     return f < 0 ? ~uf : uf;
 }
 
-inline int16_t AbsTan(uint8_t quarter,
-                      uint8_t angle,
-                      const uint16_t *lookupTable)
+template <typename Table>
+inline int16_t AbsTan(uint8_t quarter, uint8_t angle, const Table lookupTable)
 {
     return lookupTable[quarter & 1 ? INVERT(angle) : angle];
 }
 
+template <typename Table>
 int16_t MulTan(uint8_t value,
                bool inverse,
                uint8_t quarter,
                uint8_t angle,
-               const uint16_t *lookupTable)
+               const Table lookupTable)
 {
     uint8_t signedValue = value;
     if (inverse) {
