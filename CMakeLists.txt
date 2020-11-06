@@ -18,7 +18,6 @@ raycaster_fixed.h
 raycaster_fixed.cpp
 raycaster_float.h
 raycaster_float.cpp
-raycaster_tables.h
 raycaster.h
 renderer.h
 renderer.cpp

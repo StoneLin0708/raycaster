@@ -1,9 +1,194 @@
 // fixed-point implementation
 
 #include "raycaster_fixed.h"
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <iomanip>
+#include <iostream>
+#include <type_traits>
+#include "gcem.hpp"
+#include "raycaster.h"
 #include "raycaster_data.h"
-#include "raycaster_tables.h"
+
+template <typename T, typename V>
+constexpr T clamp_cast(V v)
+{
+    return static_cast<T>(std::clamp<V>(v, std::numeric_limits<T>::min(),
+                                        std::numeric_limits<T>::max()));
+}
+
+constexpr auto g_tan = []() constexpr
+{
+    std::array<uint16_t, 256> g_tan{};
+    for (int i = 0; i < 256; i++)
+        g_tan[i] =
+            static_cast<uint16_t>((256.0f * gcem::tan(i * M_PI_2 / 256.0f)));
+    g_tan[128] = 255;  // fixme
+    return g_tan;
+}
+();
+
+constexpr auto g_cotan = []() constexpr
+{
+    std::array<uint16_t, 256> g_cotan{};
+    for (int i = 0; i < 256; i++) {
+        auto t = gcem::tan(i * M_PI_2 / 256.0f);
+        g_cotan[i] =
+            t != 0
+                ? static_cast<uint16_t>(256.0f / t)
+                : static_cast<uint16_t>(std::numeric_limits<uint16_t>::max());
+    }
+    g_cotan[0] = 0;
+    return g_cotan;
+}
+();
+
+constexpr auto g_sin = []() constexpr
+{
+    std::array<uint8_t, 256> g_sin{};
+    for (int i = 0; i < 256; i++) {
+        g_sin[i] =
+            static_cast<uint8_t>(256.0f * gcem::sin(i / 1024.0f * 2 * M_PI));
+    }
+    return g_sin;
+}
+();
+
+constexpr auto g_cos = []() constexpr
+{
+    std::array<uint8_t, 256> g_cos{};
+    for (int i = 0; i < 256; i++) {
+        g_cos[i] =
+            clamp_cast<uint8_t>(256.0f * gcem::cos(i / 1024.0f * 2 * M_PI));
+    }
+    g_cos[0] = 0;
+    return g_cos;
+}
+();
+
+constexpr auto g_deltaAngle = []() constexpr
+{
+    std::array<uint16_t, SCREEN_WIDTH> g_deltaAngle{};
+    for (int i = 0; i < SCREEN_WIDTH; i++) {
+        float deltaAngle = gcem::atan(((int16_t) i - SCREEN_WIDTH / 2.0f) /
+                                      (SCREEN_WIDTH / 2.0f) * M_PI / 4);
+        int16_t da = static_cast<int16_t>(deltaAngle / M_PI_2 * 256.0f);
+        if (da < 0) {
+            da += 1024;
+        }
+        g_deltaAngle[i] = static_cast<uint16_t>(da);
+    }
+    return g_deltaAngle;
+}
+();
+
+constexpr auto g_nearHeight = []() constexpr
+{
+    std::array<uint8_t, 256> g_nearHeight{};
+    for (int i = 0; i < 256; i++) {
+        g_nearHeight[i] = static_cast<uint8_t>(
+            (INV_FACTOR_INT / (((i << 2) + MIN_DIST) >> 2)) >> 2);
+    }
+    return g_nearHeight;
+}
+();
+
+constexpr auto g_farHeight = []() constexpr
+{
+    std::array<uint8_t, 256> g_farHeight{};
+    for (int i = 0; i < 256; i++) {
+        g_farHeight[i] = static_cast<uint8_t>(
+            (INV_FACTOR_INT / (((i << 5) + MIN_DIST) >> 5)) >> 5);
+    }
+    return g_farHeight;
+}
+();
+
+constexpr auto g_nearStep = []() constexpr
+{
+    std::array<uint16_t, 256> g_nearStep{};
+    for (int i = 0; i < 256; i++) {
+        auto txn =
+            ((INV_FACTOR_INT / (((i * 4.0f) + MIN_DIST) / 4.0f)) / 4.0f) * 2.0f;
+        if (txn != 0) {
+            g_nearStep[i] = (256 / txn) * 256;
+        }
+    }
+    return g_nearStep;
+}
+();
+
+constexpr auto g_farStep = []() constexpr
+{
+    std::array<uint16_t, 256> g_farStep{};
+    for (int i = 0; i < 256; i++) {
+        auto txf =
+            ((INV_FACTOR_INT / (((i * 32.0f) + MIN_DIST) / 32.0f)) / 32.0f) *
+            2.0f;
+        if (txf != 0) {
+            g_farStep[i] = (256 / txf) * 256;
+        }
+    }
+    return g_farStep;
+}
+();
+
+constexpr auto g_overflowStep = []() constexpr
+{
+    std::array<uint16_t, 256> g_overflowStep{};
+    for (int i = 1; i < 256; i++) {
+        auto txs = ((INV_FACTOR_INT / (float) (i / 2.0f)));
+        auto ino = (txs - SCREEN_HEIGHT) / 2;
+        g_overflowStep[i] = (256 / txs) * 256;
+    }
+    return g_overflowStep;
+}
+();
+
+constexpr auto g_overflowOffset = []() constexpr
+{
+    std::array<uint16_t, 256> g_overflowOffset{};
+    for (int i = 1; i < 256; i++) {
+        auto txs = ((INV_FACTOR_INT / (float) (i / 2.0f)));
+        auto ino = (txs - SCREEN_HEIGHT) / 2;
+        g_overflowOffset[i] = static_cast<uint16_t>(
+            static_cast<int>(ino * (256 / txs) * 256) & 0xFFFFFFFF);
+    }
+    return g_overflowOffset;
+}
+();
+
+template <typename T>
+void dump(T a, int w, int n)
+{
+    int k = 0;
+    for (auto i : a) {
+        std::cout << std::setw(w) << (int) i << ',';
+        if (++k == n) {
+            std::cout << '\n';
+            k = 0;
+        }
+    }
+    std::cout << '\n';
+}
+
+static auto init = []() {
+    /*
+    dump(g_tan, 4, 12);
+    dump(g_cotan, 4, 12);
+    dump(g_sin, 3, 15);
+    dump(g_cos, 3, 15);
+    dump(g_nearHeight, 4, 15);
+    dump(g_farHeight, 4, 18);
+    dump(g_nearStep, 5, 12);
+    dump(g_farStep, 5, 11);
+    dump(g_overflowOffset, 6, 11);
+    dump(g_overflowStep, 4, 15);
+    dump(g_deltaAngle, 4, 12);
+    */
+    return true;
+}();
 
 // (v * f) >> 8
 uint16_t MulU(uint8_t v, uint16_t f)
@@ -22,7 +207,7 @@ int16_t MulS(uint8_t v, int16_t f)
 }
 
 template <typename Table>
-inline int16_t AbsTan(uint8_t quarter, uint8_t angle, const Table lookupTable)
+inline int16_t AbsTan(uint8_t quarter, uint8_t angle, const Table &lookupTable)
 {
     return lookupTable[quarter & 1 ? INVERT(angle) : angle];
 }
@@ -32,7 +217,7 @@ int16_t MulTan(uint8_t value,
                bool inverse,
                uint8_t quarter,
                uint8_t angle,
-               const Table lookupTable)
+               const Table &lookupTable)
 {
     uint8_t signedValue = value;
     if (inverse) {
@@ -167,6 +352,10 @@ void CalculateDistance(uint16_t rayX,
         }
 
         for (;;) {
+            // std::cout<<(int)(tileStepX)<<(interceptX>>8)<<","<<(int)tileX<<","<<(int)((tileStepX
+            // == -1 && (interceptX >> 8 >= tileX)))<<"\n";
+            // std::cout<<(int)(tileStepY)<<(interceptY>>8)<<","<<(int)tileY<<","<<(int)((tileStepY
+            // == -1 && (interceptY >> 8 >= tileY)))<<"\n";
             while ((tileStepY == 1 && (interceptY >> 8 < tileY)) ||
                    (tileStepY == -1 && (interceptY >> 8 >= tileY))) {
                 tileX += tileStepX;
